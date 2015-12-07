@@ -122,5 +122,35 @@ config = {
                 "video": 12
             },
         },
+        'reboot': {
+            'treeherder': {
+                'group_name': 'Raptor Performance',
+                'group_symbol': 'Reboot',
+                'job_name': 'Reboot',
+                'job_symbol': 'Rbt'
+                },
+            },
+            'logs': {
+                "reboot": os.path.join(here, '../reboot.log')
+            },
+            "thresholds": {
+                "flame-kk" : {
+                    "512": {
+                        "homescreen": 37000
+                    },
+                    "1024": {
+                        "homescreen": 37000
+                    },
+                },
+                "aries": {
+                    "2048": {
+                        "homescreen": 28000
+                    },
+                },
+            },
+            "panel-ids": {
+                "homescreen": 18
+            },
+        },
     },
 }
