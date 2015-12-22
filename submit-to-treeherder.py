@@ -399,7 +399,7 @@ if __name__ == '__main__':
         # Read return value of the test script
         try:
             if kwargs['app_name'] == "contacts" or kwargs['app_name' == 'dialer']:
-                retvalfile = "communications=" + kwargs['app_name'] + '_retval.txt'
+                retvalfile = "communications-" + kwargs['app_name'] + '_retval.txt'
             else:
                 retvalfile = kwargs['app_name'] + '_retval.txt'
 
