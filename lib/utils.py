@@ -6,11 +6,12 @@
 
 import sys, os
 
-sources = '../sources.xml'
-gecko_tag = '<project name="https://hg.mozilla.org/integration/b2g-inbound" path="gecko" remote="hgmozillaorg" revision='
-gecko = 'n/a'
 
-def getGecko():
+def getGeckoFromSources():
+  sources = '../sources.xml'
+  gecko_tag = '<project name="https://hg.mozilla.org/integration/b2g-inbound" path="gecko" remote="hgmozillaorg" revision='
+  gecko = 'n/a'
+
   try:
     f = open(sources, 'r')
 
@@ -26,6 +27,27 @@ def getGecko():
 
   except:
     print('Unable to get geck rev')
+    sys.exit(-1)
+
+  return gecko
+
+def getGeckoFromFile():
+  gecko_file = '../gecko-rev.txt'
+  gecko = 'n/a'  
+
+  try:
+    f = open(gecko_file, 'r')
+
+    for line in f:
+      line = line.rstrip()
+      if (line.find('Error') != -1 or len(line) != 40):
+        print('Gecko rev not found in %s' % gecko_file)
+        sys.exit(-1)
+      else:
+        gecko = line
+
+  except:
+    print('Unable to get gecko rev')
     sys.exit(-1)
 
   return gecko

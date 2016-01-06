@@ -127,7 +127,7 @@ class Submission(object):
                  treeherder_url=None, treeherder_client_id=None, treeherder_secret=None):
 
         self.repository = repository
-        self.revision = utils.getGecko()
+        self.revision = utils.getGeckoFromFile()
         self.device = (os.environ['DEVICE_TYPE']).strip().lower()
         self.memory = (os.environ['MEMORY']).strip()
         self.app_name = app_name

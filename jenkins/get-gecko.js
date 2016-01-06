@@ -2,7 +2,7 @@
 
 'use strict';
 
-let service = require('/home/rwood/test/lib/service');
+let service = require('@mozilla/raptor/node_modules/raptor-test/dist/es5/lib/service');
 
 let GetGecko = function(options) {
   this.options = options;
