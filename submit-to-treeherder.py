@@ -127,7 +127,7 @@ class Submission(object):
                  treeherder_url=None, treeherder_client_id=None, treeherder_secret=None):
 
         self.repository = repository
-        self.revision = utils.getGecko()
+        self.revision = utils.getGeckoFromFile()
         self.device = (os.environ['DEVICE_TYPE']).strip().lower()
         self.memory = (os.environ['MEMORY']).strip()
         self.app_name = app_name
@@ -398,7 +398,13 @@ if __name__ == '__main__':
 
         # Read return value of the test script
         try:
-            with file('../retval.txt', 'r') as f:
+            if kwargs['app_name'] == "contacts" or kwargs['app_name' == 'dialer']:
+                retvalfile = "communications-" + kwargs['app_name'] + '_retval.txt'
+            else:
+                retvalfile = kwargs['app_name'] + '_retval.txt'
+
+            #with file('../retval.txt', 'r') as f:
+            with file(retvalfile, 'r') as f:
                 retval = int(f.read())
         except IOError:
             retval = None

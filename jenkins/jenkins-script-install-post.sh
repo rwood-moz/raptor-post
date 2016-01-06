@@ -27,4 +27,12 @@ git clone https://github.com/rwood-moz/raptor-post.git
 cd raptor-post
 pip install -r requirements.txt
 
+# grab the gecko revision from device using fxos-device-service
+# and write to file; the treeherder submisison code needs it
+
+cd ${WORKSPACE}/raptor-post/jenkins
+
+./get-gecko.js ${ANDROID_SERIAL} > ${WORKSPACE}/gecko-rev.txt
+cat ${WORKSPACE}/gecko-rev.txt
+
 exit 0
