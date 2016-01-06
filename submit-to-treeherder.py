@@ -215,17 +215,16 @@ class Submission(object):
                              RESULTSET_FRAGMENT.format(repository=self.repository,
                                                        revision=self.revision))
 
-        #print('Getting revision hash from: {}'.format(lookup_url))
-        #response = requests.get(lookup_url)
-        #response.raise_for_status()
+        print('Getting revision hash from: {}'.format(lookup_url))
+        response = requests.get(lookup_url)
+        response.raise_for_status()
 
-        #if not response.json():
-        #    raise ValueError('Unable to determine revision hash for {}. '
-        #                     'Perhaps it has not been ingested by '
-        #                     'Treeherder?'.format(self.revision))
+        if not response.json():
+            raise ValueError('Unable to determine revision hash for {}. '
+                             'Perhaps it has not been ingested by '
+                             'Treeherder?'.format(self.revision))
 
-        #return response.json()['results'][0]['revision_hash']
-        return 'REVHASH'
+        return response.json()['results'][0]['revision_hash']
 
     def submit(self, job, logs=None):
         logs = logs or []
@@ -238,15 +237,15 @@ class Submission(object):
         job_collection.add(job)
 
         print('Sending results to Treeherder: {}'.format(job_collection.to_json()))
-        #url = urlparse(self.url)
+        url = urlparse(self.url)
        
-        #client = TreeherderClient(protocol=url.scheme, host=url.hostname,
-        #                          client_id=self.client_id, secret=self.secret)
-        #client.post_collection(self.repository, job_collection)
+        client = TreeherderClient(protocol=url.scheme, host=url.hostname,
+                                  client_id=self.client_id, secret=self.secret)
+        client.post_collection(self.repository, job_collection)
 
-        #print('Results are available to view at: {}'.format(
-        #    urljoin(self.url,
-        #            JOB_FRAGMENT.format(repository=self.repository, revision=self.revision))))
+        print('Results are available to view at: {}'.format(
+            urljoin(self.url,
+                    JOB_FRAGMENT.format(repository=self.repository, revision=self.revision))))
 
     def submit_running_job(self, job):
         job.add_state('running')
