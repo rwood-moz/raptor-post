@@ -31,6 +31,9 @@ BUILD_STATES = ['running', 'completed']
 RESULT_MARKER = 'visuallyLoaded'
 ONE_DAY_MS = 86400000
 
+COLD_LAUNCH = 'cold-launch'
+
+
 class RaptorResultParser(object):
 
     BUSTED = 'busted'
@@ -188,7 +191,10 @@ class Submission(object):
 
         # Bug 1174973 - for now we need unique job names even in different groups
         job.add_job_name(self.settings['treeherder']['job_name'].format(**kwargs))
-        job.add_job_symbol(self.settings['treeherder']['job_symbol'][self.app_name].format(**kwargs))
+        if self.test_type == COLD_LAUNCH:
+            job.add_job_symbol(self.settings['treeherder']['job_symbol'][self.app_name].format(**kwargs))
+        else:
+            job.add_job_symbol(self.settings['treeherder']['job_symbol'].format(**kwargs))
 
         # request time will be the jenkins TEST_TIME i.e. when jenkins job started
         job.add_submit_timestamp(int(os.environ['TEST_TIME']))
@@ -209,16 +215,17 @@ class Submission(object):
                              RESULTSET_FRAGMENT.format(repository=self.repository,
                                                        revision=self.revision))
 
-        print('Getting revision hash from: {}'.format(lookup_url))
-        response = requests.get(lookup_url)
-        response.raise_for_status()
+        #print('Getting revision hash from: {}'.format(lookup_url))
+        #response = requests.get(lookup_url)
+        #response.raise_for_status()
 
-        if not response.json():
-            raise ValueError('Unable to determine revision hash for {}. '
-                             'Perhaps it has not been ingested by '
-                             'Treeherder?'.format(self.revision))
+        #if not response.json():
+        #    raise ValueError('Unable to determine revision hash for {}. '
+        #                     'Perhaps it has not been ingested by '
+        #                     'Treeherder?'.format(self.revision))
 
-        return response.json()['results'][0]['revision_hash']
+        #return response.json()['results'][0]['revision_hash']
+        return 'REVHASH'
 
     def submit(self, job, logs=None):
         logs = logs or []
@@ -231,15 +238,15 @@ class Submission(object):
         job_collection.add(job)
 
         print('Sending results to Treeherder: {}'.format(job_collection.to_json()))
-        url = urlparse(self.url)
+        #url = urlparse(self.url)
        
-        client = TreeherderClient(protocol=url.scheme, host=url.hostname,
-                                  client_id=self.client_id, secret=self.secret)
-        client.post_collection(self.repository, job_collection)
+        #client = TreeherderClient(protocol=url.scheme, host=url.hostname,
+        #                          client_id=self.client_id, secret=self.secret)
+        #client.post_collection(self.repository, job_collection)
 
-        print('Results are available to view at: {}'.format(
-            urljoin(self.url,
-                    JOB_FRAGMENT.format(repository=self.repository, revision=self.revision))))
+        #print('Results are available to view at: {}'.format(
+        #    urljoin(self.url,
+        #            JOB_FRAGMENT.format(repository=self.repository, revision=self.revision))))
 
     def submit_running_job(self, job):
         job.add_state('running')
@@ -247,7 +254,10 @@ class Submission(object):
 
     def get_threshold(self):
         # get the acceptable maximum value for the corresponding test, & device (including memory)
-        return self.settings['thresholds'][self.device][self.memory][self.app_name]
+        if self.test_type == COLD_LAUNCH:
+            return self.settings['thresholds'][self.device][self.memory][self.app_name]
+        else:
+            return self.settings['thresholds'][self.device][self.memory]['homescreen']
 
     def build_dashboard_url(self):
         # build raptor dashboard url for given device, branch, memory etc.
@@ -268,7 +278,11 @@ class Submission(object):
 
         dash_metric = "&var-metric=All"
         dash_agg = "&var-aggretate=95%25%20Bound"
-        dash_panel = "&panelId=%s&fullscreen" % self.settings['panel-ids'][self.app_name]
+
+        if self.test_type == COLD_LAUNCH:
+            dash_panel = "&panelId=%s&fullscreen" % self.settings['panel-ids'][self.app_name]
+        else:
+            dash_panel = "&panelId=%s&fullscreen" % self.settings['panel-ids']['homescreen']
 
         dashboard_url = dash_pre + dash_dev + dash_mem + dash_branch + dash_test + dash_from + dash_to + dash_metric + dash_agg + dash_panel
 
@@ -282,8 +296,13 @@ class Submission(object):
         self.threshold = self.get_threshold()
 
         # Parse results log
-        parser = RaptorResultParser(retval, self.settings['logs'][self.app_name].format(**kwargs), 
-            self.threshold)
+        if self.test_type == COLD_LAUNCH:
+            parser = RaptorResultParser(retval, self.settings['logs'][self.app_name].format(**kwargs), 
+                self.threshold)
+        else:
+            parser = RaptorResultParser(retval, self.settings['logs']['reboot'].format(**kwargs), 
+                self.threshold)
+
         job.add_result(parser.status)
 
         # If the Jenkins BUILD_URL environment variable is present add it as artifact
@@ -312,8 +331,8 @@ class Submission(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--app-name',
-                        required=True,
-                        help='The app name i.e. "Clock"')
+                        required=False,
+                        help='The app name i.e. "clock"')
     parser.add_argument('--test-type',
                         choices=config['test_types'].keys(),
                         required=True,
@@ -357,6 +376,12 @@ if __name__ == '__main__':
     print('Raptor Treeherder Submission Script Version %s' % config['version'])
     kwargs = parse_args()
 
+    # app-name required if test-type is coldlaunch
+    if kwargs['test_type'] == COLD_LAUNCH:
+        if not kwargs['app_name']:
+            print('--app-name argument required when --test-type=cold-launch')
+            exit(1)
+
     # Activate the environment, and create if necessary
     #from lib import environment
     #if environment.exists(kwargs['venv_path']):
@@ -398,12 +423,14 @@ if __name__ == '__main__':
 
         # Read return value of the test script
         try:
-            if kwargs['app_name'] == "contacts" or kwargs['app_name' == 'dialer']:
-                retvalfile = "communications-" + kwargs['app_name'] + '_retval.txt'
+            if kwargs['test_type'] == COLD_LAUNCH:
+                if kwargs['app_name'] == 'contacts' or kwargs['app_name'] == 'dialer':
+                    retvalfile = 'communications-' + kwargs['app_name'] + '_retval.txt'
+                else:
+                    retvalfile = kwargs['app_name'] + '_retval.txt'
             else:
-                retvalfile = kwargs['app_name'] + '_retval.txt'
+                retvalfile = 'reboot_retval.txt'
 
-            #with file('../retval.txt', 'r') as f:
             with file(retvalfile, 'r') as f:
                 retval = int(f.read())
         except IOError:
