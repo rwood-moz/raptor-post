@@ -16,7 +16,7 @@ config = {
             'treeherder': {
                 'group_name': 'Raptor Performance',
                 'group_symbol': 'Raptor',
-                'job_name': 'Coldlaunch ({app_name})',
+                'job_name': 'Coldlaunch',
                 'job_symbol': {
                     'calendar': 'cal',
                     'camera': 'cam',
