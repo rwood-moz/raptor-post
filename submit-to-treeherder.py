@@ -11,7 +11,6 @@ import argparse
 import os
 import re
 import socket
-import time
 from urlparse import urljoin, urlparse
 import uuid
 
@@ -52,6 +51,11 @@ class RaptorResultParser(object):
         self.parse_results()
 
     def parse_results(self):
+        # if already failed (busted) no point in looking for logs
+        if self.retval == 1:
+            print('Test was reported as busted (--test-failure)')
+            return
+
         # search the console log for raptor aborted error, if errors, mark as busted
         try:
             with open(self.log_file, 'r') as f:
@@ -65,7 +69,7 @@ class RaptorResultParser(object):
         if self.retval == 1 or self.failures:
             return
 
-        # raptor not aborted, so check actual result value
+        # raptor not aborted, so check actual raptor result value i.e. visuallyLoaded stat
         try:
             with open(self.log_file, 'r') as f:
                 for line in f.readlines():
@@ -126,8 +130,8 @@ class RaptorResultParser(object):
 
 class Submission(object):
 
-    def __init__(self, repository, settings, app_name, test_type,
-                 treeherder_url=None, treeherder_client_id=None, treeherder_secret=None):
+    def __init__(self, repository, settings, app_name, test_type, start_time, finish_time, 
+                 test_busted, treeherder_url=None, treeherder_client_id=None, treeherder_secret=None):
 
         self.repository = repository
         self.revision = utils.getGeckoFromFile()
@@ -135,6 +139,9 @@ class Submission(object):
         self.memory = (os.environ['MEMORY']).strip()
         self.app_name = app_name
         self.test_type = test_type
+        self.start_time = start_time
+        self.finish_time = finish_time
+        self.test_busted = test_busted
         self.settings = settings
 
         self._job_details = []
@@ -145,6 +152,11 @@ class Submission(object):
 
         if not self.client_id or not self.secret:
             raise ValueError('The client_id and secret for Treeherder must be set.')
+
+        # if app name includes entrypoint we don't need it, strip it out
+        has_entrypoint = self.app_name.find('@')
+        if (has_entrypoint != -1):
+            self.app_name = self.app_name[has_entrypoint + 1:]
 
     def _get_treeherder_platform(self):
         platform = None
@@ -190,7 +202,7 @@ class Submission(object):
         job.add_group_symbol(self.settings['treeherder']['group_symbol'].format(**kwargs))
 
         # Bug 1174973 - for now we need unique job names even in different groups
-        job.add_job_name(self.settings['treeherder']['job_name'].format(**kwargs))
+        job.add_job_name(self.settings['treeherder']['job_name'].format(**kwargs) + ' (' + self.app_name + ')')
         if self.test_type == COLD_LAUNCH:
             job.add_job_symbol(self.settings['treeherder']['job_symbol'][self.app_name].format(**kwargs))
         else:
@@ -200,7 +212,7 @@ class Submission(object):
         job.add_submit_timestamp(int(os.environ['TEST_TIME']))
 
         # test start time for that paraticular app is set in jenkins job itself
-        job.add_start_timestamp(int(os.environ['RAPTOR_APP_TEST_TIME']))
+        job.add_start_timestamp(int(self.start_time))
 
         # Bug 1175559 - Workaround for HTTP Error
         job.add_end_timestamp(0)
@@ -283,7 +295,10 @@ class Submission(object):
         else:
             dash_panel = "&panelId=%s&fullscreen" % self.settings['panel-ids']['homescreen']
 
-        dashboard_url = dash_pre + dash_dev + dash_mem + dash_branch + dash_test + dash_from + dash_to + dash_metric + dash_agg + dash_panel
+        if (self.test_busted == False):
+            dashboard_url = dash_pre + dash_dev + dash_mem + dash_branch + dash_test + dash_from + dash_to + dash_metric + dash_agg + dash_panel
+        else:
+            dashboard_url = 'Test is busted, see Jenkins'
 
         print('Raptor dashboard: %s' % dashboard_url)
         return dashboard_url
@@ -323,7 +338,7 @@ class Submission(object):
         })
 
         job.add_state('completed')
-        job.add_end_timestamp(int(time.time()))
+        job.add_end_timestamp(int(self.finish_time))
 
         self.submit(job)
 
@@ -336,6 +351,13 @@ def parse_args():
                         choices=config['test_types'].keys(),
                         required=True,
                         help='The name of the Raptor test for building the job name.')
+    parser.add_argument('--start-time',
+                        required=True,
+                        help='The time (epoch) that the test started at.')
+    parser.add_argument('--finish-time',
+                        help='The time (epoch) that the test finished at.')
+    parser.add_argument('--test-failure',
+                        help='(Bool) Set to 1 if the test failed to run on Jenkins (busted).')
     parser.add_argument('--repository',
                         required=True,
                         help='The repository name the build was created from.')
@@ -343,8 +365,6 @@ def parse_args():
                         choices=BUILD_STATES,
                         required=True,
                         help='The state of the build')
-    #parser.add_argument('venv_path',
-    #                    help='Path to the virtual environment to use.')
 
     aws_group = parser.add_argument_group('AWS', 'Arguments for Amazon S3')
     aws_group.add_argument('--aws-bucket',
@@ -381,13 +401,6 @@ if __name__ == '__main__':
             print('--app-name argument required when --test-type=cold-launch')
             exit(1)
 
-    # Activate the environment, and create if necessary
-    #from lib import environment
-    #if environment.exists(kwargs['venv_path']):
-    #    environment.activate(kwargs['venv_path'])
-    #else:
-    #    environment.create(kwargs['venv_path'], os.path.join(here, 'requirements.txt'))
-
     # Can only be imported after the environment has been activated
     import mozinfo
     import requests
@@ -395,13 +408,17 @@ if __name__ == '__main__':
     from thclient import TreeherderClient, TreeherderJob, TreeherderJobCollection
 
     settings = config['test_types'][kwargs['test_type']]
+
     th = Submission(kwargs['repository'],
                     treeherder_url=kwargs['treeherder_url'],
                     treeherder_client_id=kwargs['treeherder_client_id'],
                     treeherder_secret=kwargs['treeherder_secret'],
                     settings=settings,
                     app_name=kwargs['app_name'],
-                    test_type=kwargs['test_type'])
+                    test_type=kwargs['test_type'],
+                    start_time=kwargs['start_time'],
+                    finish_time=kwargs['finish_time'],
+                    test_busted=kwargs['test_failure'])
 
     # State 'running'
     if kwargs['build_state'] == BUILD_STATES[0]:
@@ -420,20 +437,11 @@ if __name__ == '__main__':
         except:
             job_guid = str(uuid.uuid4())
 
-        # Read return value of the test script
-        try:
-            if kwargs['test_type'] == COLD_LAUNCH:
-                if kwargs['app_name'] == 'contacts' or kwargs['app_name'] == 'dialer':
-                    retvalfile = 'communications-' + kwargs['app_name'] + '_retval.txt'
-                else:
-                    retvalfile = kwargs['app_name'] + '_retval.txt'
-            else:
-                retvalfile = 'reboot_retval.txt'
-
-            with file(retvalfile, 'r') as f:
-                retval = int(f.read())
-        except IOError:
-            retval = None
+        # return value from jenkins test (--test-failure) indicates if busted
+        retval = 0
+        if kwargs['test_failure'] != None:
+            if int(kwargs['test_failure']) != 0:
+                retval = 1
 
         job = th.create_job(job_guid, **kwargs)
 
