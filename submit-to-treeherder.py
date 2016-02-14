@@ -226,9 +226,13 @@ class Submission(object):
         lookup_url = urljoin(self.url,
                              RESULTSET_FRAGMENT.format(repository=self.repository,
                                                        revision=self.revision))
+        headers = {
+            'Accept': 'application/json',
+            'User-Agent': 'post-to-treeherder',
+        }
 
         print('Getting revision hash from: {}'.format(lookup_url))
-        response = requests.get(lookup_url)
+        response = requests.get(lookup_url, headers=headers)
         response.raise_for_status()
 
         if not response.json():
